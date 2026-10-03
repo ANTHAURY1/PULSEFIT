@@ -26,7 +26,12 @@ CREATE TABLE members (
   phone TEXT,
   plan_id INTEGER REFERENCES plans(id) ON DELETE SET NULL,
   join_date DATE,
-  status TEXT NOT NULL DEFAULT 'Activo' CHECK (status IN ('Activo','Congelado','Vencido'))
+  -- manual_status: solo lo pone el staff a mano ('Activo' o 'Congelado').
+  -- El estado real que ve el usuario (Activo/Vencido/Cancelado) se calcula
+  -- automáticamente a partir de la fecha del último pago + duración del plan,
+  -- salvo que manual_status = 'Congelado' (eso sí es una decisión manual).
+  manual_status TEXT NOT NULL DEFAULT 'Activo' CHECK (manual_status IN ('Activo','Congelado')),
+  frozen_since DATE
 );
 
 CREATE TABLE trainers (
@@ -78,7 +83,8 @@ CREATE TABLE equipment (
   category TEXT,
   quantity INTEGER NOT NULL DEFAULT 0,
   condition TEXT NOT NULL DEFAULT 'Bueno' CHECK (condition IN ('Bueno','Necesita reparación','Fuera de servicio')),
-  last_serviced DATE
+  last_serviced DATE,
+  observaciones TEXT
 );
 
 CREATE TABLE pt_sessions (

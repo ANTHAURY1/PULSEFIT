@@ -1,14 +1,18 @@
 const express = require('express')
 const pool = require('../db/pool')
+const { getMembersWithStatus } = require('../db/membersWithStatus')
 const router = express.Router()
 
-router.get('/', async (req, res) => {
-  const r = await pool.query(`
-    SELECT pl.id, pl.plan_name AS "planName", pl.duration, pl.price, pl.perks,
-      COUNT(m.id) FILTER (WHERE m.status = 'Activo') AS "activeMembers"
-    FROM plans pl LEFT JOIN members m ON m.plan_id = pl.id
-    GROUP BY pl.id ORDER BY pl.id`)
-  res.json(r.rows.map(row => ({ ...row, activeMembers: Number(row.activeMembers) })))
+router.get('/', async (req, res, next) => {
+  try {
+    const plansR = await pool.query(`SELECT id, plan_name AS "planName", duration, price, perks FROM plans ORDER BY id`)
+    const members = await getMembersWithStatus()
+    const rows = plansR.rows.map(p => ({
+      ...p,
+      activeMembers: members.filter(m => m.plan_id === p.id && m.status === 'Activo').length,
+    }))
+    res.json(rows)
+  } catch (err) { next(err) }
 })
 
 router.post('/', async (req, res) => {

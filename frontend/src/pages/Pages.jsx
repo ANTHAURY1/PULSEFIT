@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useData, useToast } from '../store.jsx'
+import { useRole, canEdit } from '../roleContext.jsx'
 import { api } from '../api.js'
 import { DataTable, FormModal, ConfirmModal, StatCard, BarChart, DonutChart, initials, money } from '../components/UI.jsx'
 import {
@@ -10,13 +11,15 @@ import {
 function useCrud(collection) {
   const { get, add, update, remove } = useData()
   const { toast } = useToast()
+  const { role } = useRole()
   const [modal, setModal] = useState({ open: false, editing: null })
   const [confirm, setConfirm] = useState(null)
   const [saving, setSaving] = useState(false)
   const rows = get(collection)
+  const editable = canEdit(role, collection)
 
   return {
-    rows, modal, setModal, confirm, setConfirm, saving,
+    rows, modal, setModal, confirm, setConfirm, saving, editable, role,
     openAdd: () => setModal({ open: true, editing: null }),
     openEdit: (row) => setModal({ open: true, editing: row }),
     close: () => setModal({ open: false, editing: null }),
@@ -46,6 +49,11 @@ function useCrud(collection) {
   }
 }
 
+function ReadOnlyBanner({ editable, role }) {
+  if (editable) return null
+  return <div className="readonly-banner">🔒 Modo de solo lectura para el rol <strong>&nbsp;{role}</strong> — puedes ver todo, pero no agregar/editar/eliminar aquí.</div>
+}
+
 /* ================= Panel ================= */
 export function Dashboard() {
   const { get, loading, error } = useData()
@@ -58,13 +66,15 @@ export function Dashboard() {
   if (error) return <div className="login-error" style={{ margin: 24 }}>No se pudo conectar con el servidor: {error}</div>
 
   const activeMembers = members.filter(m => m.status === 'Activo').length
+  const vencidos = members.filter(m => m.status === 'Vencido').length
+  const cancelados = members.filter(m => m.status === 'Cancelado').length
   const todayCheckins = checkins.filter(c => c.date === '2026-08-07').length
   const revenue = payments.filter(p => p.status === 'Pagado').reduce((s, p) => s + Number(p.amount), 0)
   const avgFill = classes.length ? Math.round(classes.reduce((s, c) => s + c.enrolled / c.capacity, 0) / classes.length * 100) : 0
 
-  const statusBars = ['Activo', 'Congelado', 'Vencido'].map(s => ({
+  const statusBars = ['Activo', 'Congelado', 'Vencido', 'Cancelado'].map(s => ({
     label: s, value: members.filter(m => m.status === s).length,
-    color: s === 'Activo' ? '#059669' : s === 'Congelado' ? '#0284c7' : '#dc2626',
+    color: s === 'Activo' ? '#059669' : s === 'Congelado' ? '#0284c7' : s === 'Vencido' ? '#d97706' : '#dc2626',
   }))
 
   const paymentDonut = ['Pagado', 'Pendiente', 'Vencido'].map(s => ({
@@ -76,14 +86,18 @@ export function Dashboard() {
     <>
       <div className="grid grid-4" style={{ marginBottom: 20 }}>
         <StatCard icon="🧑‍🤝‍🧑" iconBg="var(--primary-light)" iconColor="var(--primary-dark)" value={activeMembers} label="Miembros Activos" />
-        <StatCard icon="🚪" iconBg="var(--info-bg)" iconColor="var(--info)" value={todayCheckins} label="Entradas Hoy" />
+        <StatCard icon="⚠️" iconBg="var(--warning-bg)" iconColor="var(--warning)" value={vencidos} label="Miembros Vencidos" />
+        <StatCard icon="🚫" iconBg="var(--danger-bg,#fef2f2)" iconColor="#dc2626" value={cancelados} label="Membresías Canceladas" />
         <StatCard icon="💰" iconBg="var(--success-bg)" iconColor="var(--success)" value={money(revenue)} label="Ingresos Recaudados" />
+      </div>
+      <div className="grid grid-4" style={{ marginBottom: 20 }}>
+        <StatCard icon="🚪" iconBg="var(--info-bg)" iconColor="var(--info)" value={todayCheckins} label="Entradas Hoy" />
         <StatCard icon="🧘" iconBg="var(--warning-bg)" iconColor="var(--warning)" value={`${avgFill}%`} label="Ocupación Prom. de Clases" />
       </div>
 
       <div className="two-col" style={{ marginBottom: 20 }}>
         <div className="card">
-          <div className="card-header"><div><div className="card-title">Miembros por Estado</div><div className="card-sub">Activos vs. congelados vs. vencidos</div></div></div>
+          <div className="card-header"><div><div className="card-title">Miembros por Estado</div><div className="card-sub">Activos, congelados, vencidos y cancelados</div></div></div>
           <BarChart data={statusBars} />
         </div>
         <div className="card">
@@ -98,6 +112,7 @@ export function Dashboard() {
 /* ================= Miembros ================= */
 export function Members() {
   const c = useCrud('members')
+  const statusBadgeClass = (s) => s === 'Activo' ? 'badge-success' : s === 'Congelado' ? 'badge-info' : s === 'Vencido' ? 'badge-warning' : 'badge-danger'
   const columns = [
     { key: 'name', label: 'Miembro', render: r => (
       <div className="name-cell"><span className="avatar-sm">{initials(r.name)}</span>
@@ -106,13 +121,19 @@ export function Members() {
     { key: 'email', label: 'Correo' },
     { key: 'joinDate', label: 'Ingreso' },
     { key: 'status', label: 'Estado', render: r => (
-      <span className={`badge ${r.status === 'Activo' ? 'badge-success' : r.status === 'Congelado' ? 'badge-info' : 'badge-danger'}`}>{r.status}</span>
+      <div>
+        <span className={`badge ${statusBadgeClass(r.status)}`}>{r.status}</span>
+        {r.daysInStatus != null && r.status !== 'Activo' && (
+          <div className="cell-muted" style={{ marginTop: 3 }}>hace {r.daysInStatus} día{r.daysInStatus === 1 ? '' : 's'}</div>
+        )}
+      </div>
     ) },
   ]
   return (
     <>
+      <ReadOnlyBanner editable={c.editable} role={c.role} />
       <DataTable title="Miembros" subtitle={`${c.rows.length} en total`} columns={columns} rows={c.rows}
-        searchKeys={['name', 'email', 'plan']} onAdd={c.openAdd} onEdit={c.openEdit} onDelete={c.askDelete}
+        searchKeys={['name', 'email', 'plan']} onAdd={c.editable ? c.openAdd : undefined} onEdit={c.editable ? c.openEdit : undefined} onDelete={c.editable ? c.askDelete : undefined}
         addLabel="Agregar Miembro" emptyIcon="🧑‍🤝‍🧑" emptyMessage="Aún no hay miembros." />
       <FormModal open={c.modal.open} title={c.modal.editing ? 'Editar Miembro' : 'Agregar Miembro'} fields={memberFields}
         values={c.modal.editing || {}} submitLabel={c.saving ? 'Guardando…' : (c.modal.editing ? 'Guardar cambios' : 'Agregar miembro')}
@@ -133,8 +154,9 @@ export function Plans() {
   ]
   return (
     <>
+      <ReadOnlyBanner editable={c.editable} role={c.role} />
       <DataTable title="Planes de Membresía" subtitle={`${c.rows.length} planes`} columns={columns} rows={c.rows}
-        searchKeys={['planName', 'duration']} onAdd={c.openAdd} onEdit={c.openEdit} onDelete={c.askDelete}
+        searchKeys={['planName', 'duration']} onAdd={c.editable ? c.openAdd : undefined} onEdit={c.editable ? c.openEdit : undefined} onDelete={c.editable ? c.askDelete : undefined}
         addLabel="Agregar Plan" emptyIcon="🎫" emptyMessage="Aún no hay planes." />
       <FormModal open={c.modal.open} title={c.modal.editing ? 'Editar Plan' : 'Agregar Plan'} fields={planFields}
         values={c.modal.editing || {}} submitLabel={c.saving ? 'Guardando…' : (c.modal.editing ? 'Guardar cambios' : 'Agregar plan')}
@@ -155,8 +177,9 @@ export function Checkins() {
   ]
   return (
     <>
+      <ReadOnlyBanner editable={c.editable} role={c.role} />
       <DataTable title="Registro de Entradas" subtitle={`${c.rows.length} entradas`} columns={columns} rows={c.rows}
-        searchKeys={['memberName']} onAdd={c.openAdd} onEdit={c.openEdit} onDelete={c.askDelete}
+        searchKeys={['memberName']} onAdd={c.editable ? c.openAdd : undefined} onEdit={c.editable ? c.openEdit : undefined} onDelete={c.editable ? c.askDelete : undefined}
         addLabel="Registrar Entrada" emptyIcon="🚪" emptyMessage="Aún no hay entradas registradas." />
       <FormModal open={c.modal.open} title={c.modal.editing ? 'Editar Entrada' : 'Registrar Entrada'} fields={checkinFields}
         values={c.modal.editing || {}} submitLabel={c.saving ? 'Guardando…' : (c.modal.editing ? 'Guardar cambios' : 'Registrar')}
@@ -167,7 +190,7 @@ export function Checkins() {
 }
 
 /* ================= Clases (con inscripción real) ================= */
-function EnrollmentModal({ cls, onClose }) {
+function EnrollmentModal({ cls, onClose, canManage }) {
   const { toast } = useToast()
   const { refetch } = useData()
   const [enrolled, setEnrolled] = useState([])
@@ -203,19 +226,23 @@ function EnrollmentModal({ cls, onClose }) {
               {enrolled.map(m => (
                 <div key={m.id} className="name-cell" style={{ justifyContent: 'space-between', marginBottom: 6 }}>
                   <span>{m.name}</span>
-                  <button className="btn btn-outline" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => removeMember(m.id)}>Quitar</button>
+                  {canManage && <button className="btn btn-outline" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => removeMember(m.id)}>Quitar</button>}
                 </div>
               ))}
               {enrolled.length === 0 && <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>Nadie inscrito todavía.</p>}
-              <hr style={{ margin: '14px 0', border: 'none', borderTop: '1px solid var(--border)' }} />
-              <p style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 8 }}>Inscribir a un miembro existente:</p>
-              {available.map(m => (
-                <div key={m.id} className="name-cell" style={{ justifyContent: 'space-between', marginBottom: 6 }}>
-                  <span>{m.name}</span>
-                  <button className="btn btn-primary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => addMember(m.id)}>Inscribir</button>
-                </div>
-              ))}
-              {available.length === 0 && <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>Todos los miembros ya están inscritos.</p>}
+              {canManage && (
+                <>
+                  <hr style={{ margin: '14px 0', border: 'none', borderTop: '1px solid var(--border)' }} />
+                  <p style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 8 }}>Inscribir a un miembro existente:</p>
+                  {available.map(m => (
+                    <div key={m.id} className="name-cell" style={{ justifyContent: 'space-between', marginBottom: 6 }}>
+                      <span>{m.name}</span>
+                      <button className="btn btn-primary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => addMember(m.id)}>Inscribir</button>
+                    </div>
+                  ))}
+                  {available.length === 0 && <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>Todos los miembros ya están inscritos.</p>}
+                </>
+              )}
             </>
           )}
         </div>
@@ -241,14 +268,15 @@ export function Classes() {
   ]
   return (
     <>
+      <ReadOnlyBanner editable={c.editable} role={c.role} />
       <DataTable title="Clases" subtitle={`${c.rows.length} clases`} columns={columns} rows={c.rows}
-        searchKeys={['className', 'trainer']} onAdd={c.openAdd} onEdit={c.openEdit} onDelete={c.askDelete}
+        searchKeys={['className', 'trainer']} onAdd={c.editable ? c.openAdd : undefined} onEdit={c.editable ? c.openEdit : undefined} onDelete={c.editable ? c.askDelete : undefined}
         addLabel="Agregar Clase" emptyIcon="🧘" emptyMessage="Aún no hay clases." />
       <FormModal open={c.modal.open} title={c.modal.editing ? 'Editar Clase' : 'Agregar Clase'} fields={classFields}
         values={c.modal.editing || {}} submitLabel={c.saving ? 'Guardando…' : (c.modal.editing ? 'Guardar cambios' : 'Agregar clase')}
         onClose={c.close} onSubmit={(v) => c.submit(v, 'Clase')} />
       <ConfirmModal open={!!c.confirm} message={`¿Eliminar ${c.confirm?.className}?`} onCancel={() => c.setConfirm(null)} onConfirm={() => c.confirmDelete('Clase')} />
-      {enrollFor && <EnrollmentModal cls={enrollFor} onClose={() => setEnrollFor(null)} />}
+      {enrollFor && <EnrollmentModal cls={enrollFor} onClose={() => setEnrollFor(null)} canManage={c.editable} />}
     </>
   )
 }
@@ -267,8 +295,9 @@ export function Payments() {
   ]
   return (
     <>
+      <ReadOnlyBanner editable={c.editable} role={c.role} />
       <DataTable title="Pagos" subtitle={`${c.rows.length} transacciones`} columns={columns} rows={c.rows}
-        searchKeys={['memberName', 'plan']} onAdd={c.openAdd} onEdit={c.openEdit} onDelete={c.askDelete}
+        searchKeys={['memberName', 'plan']} onAdd={c.editable ? c.openAdd : undefined} onEdit={c.editable ? c.openEdit : undefined} onDelete={c.editable ? c.askDelete : undefined}
         addLabel="Agregar Pago" emptyIcon="💳" emptyMessage="Aún no hay pagos." />
       <FormModal open={c.modal.open} title={c.modal.editing ? 'Editar Pago' : 'Agregar Pago'} fields={paymentFields}
         values={c.modal.editing || {}} submitLabel={c.saving ? 'Guardando…' : (c.modal.editing ? 'Guardar cambios' : 'Agregar pago')}
@@ -278,21 +307,23 @@ export function Payments() {
   )
 }
 
-/* ================= Equipamiento ================= */
+/* ================= Equipamiento / Mantenimiento ================= */
 export function Equipment() {
   const c = useCrud('equipment')
   const columns = [
     { key: 'equipmentName', label: 'Equipo' },
     { key: 'category', label: 'Categoría' },
     { key: 'quantity', label: 'Cant.' },
-    { key: 'condition', label: 'Condición', render: r => (
-      <span className={`badge ${r.condition === 'Bueno' ? 'badge-success' : r.condition === 'Necesita reparación' ? 'badge-warning' : 'badge-danger'}`}>{r.condition}</span>
+    { key: 'condition', label: 'Estado', render: r => (
+      <span className={`badge ${r.condition === 'Bueno' ? 'badge-success' : r.condition === 'Necesita reparación' ? 'badge-warning' : 'badge-danger'}`}>{r.condition === 'Fuera de servicio' ? 'Inactivo' : r.condition === 'Bueno' ? 'Activo' : r.condition}</span>
     ) },
+    { key: 'observaciones', label: 'Observaciones', render: r => <span className="cell-muted">{r.observaciones || '—'}</span> },
   ]
   return (
     <>
-      <DataTable title="Inventario de Equipamiento" subtitle={`${c.rows.length} artículos`} columns={columns} rows={c.rows}
-        searchKeys={['equipmentName', 'category']} onAdd={c.openAdd} onEdit={c.openEdit} onDelete={c.askDelete}
+      <ReadOnlyBanner editable={c.editable} role={c.role} />
+      <DataTable title="Mantenimiento y Equipamiento" subtitle={`${c.rows.length} artículos`} columns={columns} rows={c.rows}
+        searchKeys={['equipmentName', 'category']} onAdd={c.editable ? c.openAdd : undefined} onEdit={c.editable ? c.openEdit : undefined} onDelete={c.editable ? c.askDelete : undefined}
         addLabel="Agregar Equipo" emptyIcon="🏋️‍♀️" emptyMessage="Aún no hay equipo registrado." />
       <FormModal open={c.modal.open} title={c.modal.editing ? 'Editar Equipo' : 'Agregar Equipo'} fields={equipmentFields}
         values={c.modal.editing || {}} submitLabel={c.saving ? 'Guardando…' : (c.modal.editing ? 'Guardar cambios' : 'Agregar equipo')}
@@ -316,8 +347,9 @@ export function Trainers() {
   ]
   return (
     <>
+      <ReadOnlyBanner editable={c.editable} role={c.role} />
       <DataTable title="Entrenadores" subtitle={`${c.rows.length} entrenadores`} columns={columns} rows={c.rows}
-        searchKeys={['name', 'specialty']} onAdd={c.openAdd} onEdit={c.openEdit} onDelete={c.askDelete}
+        searchKeys={['name', 'specialty']} onAdd={c.editable ? c.openAdd : undefined} onEdit={c.editable ? c.openEdit : undefined} onDelete={c.editable ? c.askDelete : undefined}
         addLabel="Agregar Entrenador" emptyIcon="🥇" emptyMessage="Aún no hay entrenadores." />
       <FormModal open={c.modal.open} title={c.modal.editing ? 'Editar Entrenador' : 'Agregar Entrenador'} fields={trainerFields}
         values={c.modal.editing || {}} submitLabel={c.saving ? 'Guardando…' : (c.modal.editing ? 'Guardar cambios' : 'Agregar entrenador')}
@@ -330,8 +362,13 @@ export function Trainers() {
 /* ================= Sesiones Personales ================= */
 export function PTSessions() {
   const c = useCrud('ptSessions')
+  const { get } = useData()
+  const members = get('members')
+  const planOf = (memberName) => members.find(m => m.name === memberName)?.plan || '—'
   const columns = [
-    { key: 'memberName', label: 'Miembro', render: r => <div><div className="cell-strong">{r.memberName}</div><div className="cell-muted">{r.focusArea}</div></div> },
+    { key: 'memberName', label: 'Miembro', render: r => (
+      <div><div className="cell-strong">{r.memberName}</div><div className="cell-muted">Plan: {planOf(r.memberName)} · {r.focusArea}</div></div>
+    ) },
     { key: 'trainerName', label: 'Entrenador' },
     { key: 'date', label: 'Fecha' },
     { key: 'time', label: 'Hora' },
@@ -341,8 +378,9 @@ export function PTSessions() {
   ]
   return (
     <>
+      <ReadOnlyBanner editable={c.editable} role={c.role} />
       <DataTable title="Sesiones Personales" subtitle={`${c.rows.length} sesiones`} columns={columns} rows={c.rows}
-        searchKeys={['memberName', 'trainerName', 'focusArea']} onAdd={c.openAdd} onEdit={c.openEdit} onDelete={c.askDelete}
+        searchKeys={['memberName', 'trainerName', 'focusArea']} onAdd={c.editable ? c.openAdd : undefined} onEdit={c.editable ? c.openEdit : undefined} onDelete={c.editable ? c.askDelete : undefined}
         addLabel="Agendar Sesión" emptyIcon="📆" emptyMessage="Aún no hay sesiones agendadas." />
       <FormModal open={c.modal.open} title={c.modal.editing ? 'Editar Sesión' : 'Agendar Sesión'} fields={ptSessionFields}
         values={c.modal.editing || {}} submitLabel={c.saving ? 'Guardando…' : (c.modal.editing ? 'Guardar cambios' : 'Agendar')}
@@ -364,8 +402,9 @@ export function Progress() {
   ]
   return (
     <>
+      <ReadOnlyBanner editable={c.editable} role={c.role} />
       <DataTable title="Seguimiento de Progreso" subtitle={`${c.rows.length} registros`} columns={columns} rows={c.rows}
-        searchKeys={['memberName']} onAdd={c.openAdd} onEdit={c.openEdit} onDelete={c.askDelete}
+        searchKeys={['memberName']} onAdd={c.editable ? c.openAdd : undefined} onEdit={c.editable ? c.openEdit : undefined} onDelete={c.editable ? c.askDelete : undefined}
         addLabel="Registrar Progreso" emptyIcon="📈" emptyMessage="Aún no hay registros de progreso." />
       <FormModal open={c.modal.open} title={c.modal.editing ? 'Editar Registro' : 'Registrar Progreso'} fields={progressFields}
         values={c.modal.editing || {}} submitLabel={c.saving ? 'Guardando…' : (c.modal.editing ? 'Guardar cambios' : 'Registrar')}
@@ -388,13 +427,14 @@ export function Leads() {
   ]
   return (
     <>
+      <ReadOnlyBanner editable={c.editable} role={c.role} />
       <DataTable title="Prospectos" subtitle={`${c.rows.length} prospectos`} columns={columns} rows={c.rows}
-        searchKeys={['name', 'source', 'interestedPlan']} onAdd={c.openAdd} onEdit={c.openEdit} onDelete={c.askDelete}
-        addLabel="Agregar Prospecto" emptyIcon="🎯" emptyMessage="Aún no hay prospectos." />
-      <FormModal open={c.modal.open} title={c.modal.editing ? 'Editar Prospecto' : 'Agregar Prospecto'} fields={leadFields}
-        values={c.modal.editing || {}} submitLabel={c.saving ? 'Guardando…' : (c.modal.editing ? 'Guardar cambios' : 'Agregar prospecto')}
-        onClose={c.close} onSubmit={(v) => c.submit(v, 'Prospecto')} />
-      <ConfirmModal open={!!c.confirm} message={`¿Eliminar a ${c.confirm?.name}?`} onCancel={() => c.setConfirm(null)} onConfirm={() => c.confirmDelete('Prospecto')} />
+        searchKeys={['name', 'source', 'interestedPlan']} onAdd={c.editable ? c.openAdd : undefined} onEdit={c.editable ? c.openEdit : undefined} onDelete={c.editable ? c.askDelete : undefined}
+        addLabel="Agregar Consulta" emptyIcon="🎯" emptyMessage="Aún no hay consultas." />
+      <FormModal open={c.modal.open} title={c.modal.editing ? 'Editar Consulta' : 'Agregar Consulta'} fields={leadFields}
+        values={c.modal.editing || {}} submitLabel={c.saving ? 'Guardando…' : (c.modal.editing ? 'Guardar cambios' : 'Agregar consulta')}
+        onClose={c.close} onSubmit={(v) => c.submit(v, 'Consulta')} />
+      <ConfirmModal open={!!c.confirm} message={`¿Eliminar a ${c.confirm?.name}?`} onCancel={() => c.setConfirm(null)} onConfirm={() => c.confirmDelete('Consulta')} />
     </>
   )
 }

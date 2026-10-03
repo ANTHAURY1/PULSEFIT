@@ -41,7 +41,7 @@ export function Sidebar({ appName, tagline, icon, nav, open }) {
 }
 
 /* ---------------- Topbar ---------------- */
-export function Topbar({ title, subtitle, user, onMenuToggle, onReset, onLogout }) {
+export function Topbar({ title, subtitle, user, onMenuToggle, onReset, onLogout, role, onRoleChange, roles }) {
   return (
     <header className="topbar">
       <div className="topbar-left">
@@ -53,6 +53,11 @@ export function Topbar({ title, subtitle, user, onMenuToggle, onReset, onLogout 
       </div>
       <div className="topbar-right">
         <div className="search-box"><span>🔍</span><input placeholder="Búsqueda rápida…" /></div>
+        {roles && (
+          <select className="role-select" value={role} onChange={e => onRoleChange(e.target.value)} title="Cambiar de rol">
+            {roles.map(r => <option key={r} value={r}>👤 {r}</option>)}
+          </select>
+        )}
         <button className="icon-btn" title="Notificaciones">🔔<span className="dot"></span></button>
         <button className="icon-btn" title="Restablecer datos de demostración" onClick={onReset}>↺</button>
         <div className="user-chip">

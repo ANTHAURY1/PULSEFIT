@@ -3,6 +3,7 @@ import { Routes, Route, useLocation, Navigate } from 'react-router-dom'
 import { Sidebar, Topbar, ConfirmModal } from './components/UI.jsx'
 import { DataProvider, ToastProvider, useData, useToast } from './store.jsx'
 import { AuthProvider, useAuth } from './auth.jsx'
+import { RoleProvider, useRole, ROLES } from './roleContext.jsx'
 import Login from './pages/Login.jsx'
 import * as Pages from './pages/Pages.jsx'
 
@@ -57,6 +58,7 @@ function Shell() {
   const { resetAll } = useData()
   const { toast } = useToast()
   const { user, logout } = useAuth()
+  const { role, setRole } = useRole()
   const loc = useLocation()
   const meta = META[loc.pathname] || META['/']
 
@@ -67,6 +69,7 @@ function Shell() {
         <Topbar
           title={meta.title} subtitle={meta.sub} user={user}
           onMenuToggle={() => setOpen(o => !o)} onReset={() => setConfirmOpen(true)} onLogout={logout}
+          role={role} onRoleChange={setRole} roles={ROLES}
         />
         <main className="page-content">
           <Routes>
@@ -122,7 +125,9 @@ function Root() {
 export default function App() {
   return (
     <AuthProvider>
-      <Root />
+      <RoleProvider>
+        <Root />
+      </RoleProvider>
     </AuthProvider>
   )
 }

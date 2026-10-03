@@ -46,11 +46,12 @@ async function seed() {
       ['Carlos Rivera', 'carlos.rivera@example.com', '+1 555-1123', 'Plus Trimestral', '2025-11-20', 'Activo'],
       ['Amy Chen', 'amy.chen@example.com', '+1 555-1134', 'Básico Mensual', '2026-03-10', 'Congelado'],
       ['Josh Turner', 'josh.turner@example.com', '+1 555-1145', 'Élite Anual', '2023-09-05', 'Activo'],
-      ['Zoe Bennett', 'zoe.bennett@example.com', '+1 555-1156', 'Plus Trimestral', '2026-02-14', 'Vencido'],
+      ['Zoe Bennett', 'zoe.bennett@example.com', '+1 555-1156', 'Plus Trimestral', '2026-02-14', 'Activo'],
     ]
     const memberIds = {}
-    for (const [name, email, phone, planName, join_date, status] of members) {
-      const r = await client.query(`INSERT INTO members (name, email, phone, plan_id, join_date, status) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`, [name, email, phone, planIds[planName], join_date, status])
+    for (const [name, email, phone, planName, join_date, manual_status] of members) {
+      const frozen_since = manual_status === 'Congelado' ? '2026-08-01' : null
+      const r = await client.query(`INSERT INTO members (name, email, phone, plan_id, join_date, manual_status, frozen_since) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`, [name, email, phone, planIds[planName], join_date, manual_status, frozen_since])
       memberIds[name] = r.rows[0].id
     }
 
@@ -99,14 +100,14 @@ async function seed() {
     }
 
     const equipment = [
-      ['Caminadora (Life Fitness T5)', 'Cardio', 8, 'Bueno', '2026-07-01'],
-      ['Set de Barra Olímpica', 'Pesas Libres', 12, 'Bueno', '2026-06-15'],
-      ['Máquina de Poleas Cruzadas', 'Fuerza', 2, 'Necesita reparación', '2026-05-20'],
-      ['Máquina de Remo', 'Cardio', 4, 'Bueno', '2026-07-10'],
-      ['Máquina de Prensa de Piernas', 'Fuerza', 1, 'Fuera de servicio', '2026-04-02'],
+      ['Caminadora (Life Fitness T5)', 'Cardio', 8, 'Bueno', '2026-07-01', 'Revisión de rutina al día, sin novedades.'],
+      ['Set de Barra Olímpica', 'Pesas Libres', 12, 'Bueno', '2026-06-15', ''],
+      ['Máquina de Poleas Cruzadas', 'Fuerza', 2, 'Necesita reparación', '2026-05-20', 'Cable deshilachado, pedir repuesto al proveedor.'],
+      ['Máquina de Remo', 'Cardio', 4, 'Bueno', '2026-07-10', ''],
+      ['Máquina de Prensa de Piernas', 'Fuerza', 1, 'Fuera de servicio', '2026-04-02', 'Pistón hidráulico dañado, fuera de servicio hasta reparación.'],
     ]
-    for (const [equipment_name, category, quantity, condition, last_serviced] of equipment) {
-      await client.query(`INSERT INTO equipment (equipment_name, category, quantity, condition, last_serviced) VALUES ($1,$2,$3,$4,$5)`, [equipment_name, category, quantity, condition, last_serviced])
+    for (const [equipment_name, category, quantity, condition, last_serviced, observaciones] of equipment) {
+      await client.query(`INSERT INTO equipment (equipment_name, category, quantity, condition, last_serviced, observaciones) VALUES ($1,$2,$3,$4,$5,$6)`, [equipment_name, category, quantity, condition, last_serviced, observaciones])
     }
 
     const ptSessions = [

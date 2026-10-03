@@ -8,7 +8,11 @@ export const memberFields = [
   { name: 'phone', label: 'Teléfono', placeholder: '+1 555-0100' },
   { name: 'plan', label: 'Plan de membresía', placeholder: 'ej. Élite Anual' },
   { name: 'joinDate', label: 'Fecha de ingreso', type: 'date' },
-  { name: 'status', label: 'Estado', type: 'select', required: true, options: ['Activo', 'Congelado', 'Vencido'].map(s => ({ value: s, label: s })) },
+  {
+    name: 'status', label: 'Estado', type: 'select', required: true,
+    options: ['Activo', 'Congelado'].map(s => ({ value: s, label: s })),
+    hint: '"Vencido" y "Cancelado" los calcula el sistema solo según la fecha de pago — aquí solo decides si está Activo o lo Congelas a mano.',
+  },
 ]
 
 export const planFields = [
@@ -46,6 +50,7 @@ export const equipmentFields = [
   { name: 'quantity', label: 'Cantidad', type: 'number', required: true },
   { name: 'condition', label: 'Condición', type: 'select', required: true, options: ['Bueno', 'Necesita reparación', 'Fuera de servicio'].map(c => ({ value: c, label: c })) },
   { name: 'lastServiced', label: 'Último mantenimiento', type: 'date' },
+  { name: 'observaciones', label: 'Observaciones', type: 'textarea', placeholder: 'Notas de mantenimiento, repuestos pendientes, etc.' },
 ]
 
 export const trainerFields = [
